@@ -34,22 +34,26 @@ class Task {
   final String name;
   final String description;
   final List<String> subtasks;
-  final String label;
+  final List<String> labels;
   final String uuid;
 
   Task({
     required this.name,
     required this.description,
     required this.subtasks,
-    required this.label,
-  }) : uuid = const Uuid().v4();
+    required List<String> labels,
+  }) : labels = List.unmodifiable(labels),
+       uuid = const Uuid().v4();
 
   @override
   bool operator ==(covariant Task other) =>
       uuid == other.uuid;
-
+  
   @override
+  int get hashCode => uuid.hashCode;
+
   String get title => name;
+  
 }
 
 class TaskProvider extends ChangeNotifier {
@@ -65,6 +69,18 @@ class TaskProvider extends ChangeNotifier {
     _items.remove(task);
     notifyListeners();
   }
+
+  List<Task> tasksByLabel (String label) {
+    return _items.where((t) => t.labels.contains(label)).toList();
+  }
+
+  Set<String> allLabels() {
+    final Set<String> out = {};
+    for (final t in _items) {
+      out.addAll(t.labels);
+    }
+    return out;
+  }
 }
 
 class TaskWidget extends StatelessWidget {
@@ -73,6 +89,9 @@ class TaskWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (tasks.isEmpty) {
+      return const Center(child: Text('No tasks yet'),);
+    }
     return ListView.builder(
       itemCount: tasks.length,
       itemBuilder: (context, index) {
@@ -111,35 +130,46 @@ class TagWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labels = tasks.map((task) => task.label).toSet().toList();
-    return Wrap(
-      spacing: 8,
-      children: labels.map(
-        (label) {
-          return GestureDetector(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => TasksByLabelPage(label: label),
+    final Set<String> uniqueLabels = {};
+    for (final t in tasks) {
+      uniqueLabels.addAll(t.labels);
+    }
+    final labels = uniqueLabels.toList();
+    labels.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()),);
+
+    if (labels.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: labels.map((label) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => TasksByLabelPage(label: label),
+                    )
+                  );
+                },
+                child: Container(
+                  height: 34,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15),
+                    color: Colors.teal,
+                  ),
+                  child: Text(label)
                 ),
-              );
-            },
-            child: Container(
-              height: 30,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: Colors.teal,
               ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white
-                ),
-              ),
-            ),
-          );
-        }
-      ).toList(),
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 }
@@ -156,9 +186,7 @@ class TasksByLabelPage extends StatelessWidget {
       ),
       body: Consumer<TaskProvider>(
         builder: (context, value, child) {
-          final filteredTasks = value.item
-              .where((task) => task.label == label)
-              .toList();
+          final filteredTasks = value.tasksByLabel(label);
 
           if (filteredTasks.isEmpty) {
             return const Center(
@@ -185,8 +213,8 @@ class TaskDetailWidget extends StatelessWidget {
       appBar: AppBar(
         title: Text('Task Details'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -204,8 +232,15 @@ class TaskDetailWidget extends StatelessWidget {
               'Subtasks:',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
-            Expanded(
-              child: ListView.builder(
+            if (task.subtasks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No subtasks'),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
                 itemCount: task.subtasks.length,
                 itemBuilder: (context, index) {
                   return ListTile(
@@ -213,16 +248,31 @@ class TaskDetailWidget extends StatelessWidget {
                   );
                 },
               ),
-            ),
             SizedBox(height: 10,),
             Text(
-              'Label',
+              'Labels',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
-            Text(
-              task.label,
-              style: TextStyle(fontSize: 16),
-            ),
+            if (task.labels.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No labels'),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: task.labels.map((l) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Chip(label: Text(l)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -246,10 +296,12 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: Column(
         children: [
-          Consumer<TaskProvider>(
-            builder: (context, value, child) {
-              return TagWidget(tasks: value.item);
-            },
+          SizedBox(height: 50,
+            child: Consumer<TaskProvider>(
+              builder: (context, value, child) {
+                return TagWidget(tasks: value.item);
+              },
+            ),
           ),
           Expanded(
             child: Consumer<TaskProvider>(
@@ -285,7 +337,7 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
   final TextEditingController taskController = TextEditingController();
   final List<TextEditingController> _subtaskControllers = [];
   final TextEditingController descriptionController = TextEditingController();
-  final TextEditingController labelController = TextEditingController();
+  final List<TextEditingController> _labelControllers = [];
 
   @override
   void dispose() {
@@ -294,12 +346,21 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
       controller.dispose();
     }
     descriptionController.dispose();
+    for (var controller in _labelControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   void addTasks() {
     setState(() {
       _subtaskControllers.add(TextEditingController());
+    });
+  }
+
+  void addLabel() {
+    setState(() {
+      _labelControllers.add(TextEditingController());
     });
   }
 
@@ -340,7 +401,7 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
                                 _subtaskControllers.removeAt(index);
                               });
                             }, 
-                            icon: Icon(Icons.remove)
+                            icon: Icon(Icons.delete)
                           ),
                           labelText: 'Subtask Name',
                           border: OutlineInputBorder(
@@ -368,13 +429,28 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
                 ),
               ),
               SizedBox(height: 10,),
-              TextField(
-                controller: labelController,
-                decoration: InputDecoration(
-                  labelText: 'Adding Label',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  )
+              Column(
+                children: List.generate(
+                  _labelControllers.length, 
+                  (index) {
+                    return TextField(
+                      controller: _labelControllers[index],
+                      decoration: InputDecoration(
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setState(() {
+                            _labelControllers.removeAt(index);
+                            });
+                          },
+                          icon: Icon(Icons.delete)
+                        ),
+                        labelText: 'label',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15)
+                        )
+                      ),
+                    );
+                  },
                 ),
               ),
               SizedBox(height: 10,),
@@ -388,10 +464,16 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
                   ),
                   TextButton(
                     onPressed: () {
+                      addLabel();
+                    }, 
+                    child: Text('Add label')
+                  ),
+                  TextButton(
+                    onPressed: () {
                       final text = taskController.text;
                       final description = descriptionController.text;
                       final subtasks = _subtaskControllers.map((e) => e.text).toList();
-                      final label = labelController.text;
+                      final labels = _labelControllers.map((e) => e.text).toList();
                       if (text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Enter Task'))
@@ -403,7 +485,7 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
                           name: text,
                           description: description,
                           subtasks: subtasks,
-                          label: label,
+                          labels: labels,
                         );
                         context.read<TaskProvider>().add(
                           task,
