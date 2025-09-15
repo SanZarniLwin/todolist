@@ -30,10 +30,17 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class Subtask {
+  final String title;
+  bool isDone;
+
+  Subtask({required this.title, this.isDone = false});
+}
+
 class Task {
   final String name;
   final String description;
-  final List<String> subtasks;
+  final List<Subtask> subtasks;
   final List<String> labels;
   final String uuid;
 
@@ -42,8 +49,9 @@ class Task {
     required this.description,
     required this.subtasks,
     required List<String> labels,
+    String? uuid,
   }) : labels = List.unmodifiable(labels),
-       uuid = const Uuid().v4();
+       uuid = uuid ?? const Uuid().v4();
 
   @override
   bool operator ==(covariant Task other) =>
@@ -81,6 +89,61 @@ class TaskProvider extends ChangeNotifier {
     }
     return out;
   }
+
+  void toggleSubtask(Task task, int index) {
+    final taskIndex = _items.indexOf(task);
+    if (taskIndex != -1) {
+      _items[taskIndex].subtasks[index].isDone = !_items[taskIndex].subtasks[index].isDone;
+      notifyListeners();
+    }
+  }
+
+  void removeSubtask (Task task, int index) {
+    final taskIndex = _items.indexOf(task);
+    if (taskIndex != -1) {
+      _items[taskIndex].subtasks.removeAt(index);
+      notifyListeners();
+    }
+  }
+
+  void addSubtask (Task task, String title) {
+    final taskIndex = _items.indexOf(task);
+    if (taskIndex != -1) {
+      _items[taskIndex].subtasks.add(Subtask(title: title));
+      notifyListeners();
+    }
+  }
+
+  void addLabel(Task task, String label) {
+    final taskIndex = _items.indexOf(task);
+    if (taskIndex != -1 && !_items[taskIndex].labels.contains(label)) {
+      final updatedLabels = List<String>.from(_items[taskIndex].labels)..add(label);
+      _items[taskIndex] = Task(
+        name: _items[taskIndex].name,
+        description: _items[taskIndex].description,
+        subtasks: _items[taskIndex].subtasks,
+        labels: updatedLabels,
+        uuid: _items[taskIndex].uuid,
+      );
+      notifyListeners();
+    }
+  }
+
+  void removeLabel(Task task, String label) {
+    final taskIndex = _items.indexOf(task);
+    if (taskIndex != -1) {
+      final updatedLabels = List<String>.from(_items[taskIndex].labels)..remove(label);
+      _items[taskIndex] = Task(
+        name: _items[taskIndex].name,
+        description: _items[taskIndex].description,
+        subtasks: _items[taskIndex].subtasks,
+        labels: updatedLabels,
+        uuid: _items[taskIndex].uuid
+      );
+      notifyListeners();
+    }
+  }
+
 }
 
 class TaskWidget extends StatelessWidget {
@@ -202,80 +265,210 @@ class TasksByLabelPage extends StatelessWidget {
 }
 
 
-class TaskDetailWidget extends StatelessWidget {
+class TaskDetailWidget extends StatefulWidget {
   final Task task;
 
   const TaskDetailWidget({super.key, required this.task});
 
   @override
+  State<TaskDetailWidget> createState() => _TaskDetailWidgetState();
+}
+
+class _TaskDetailWidgetState extends State<TaskDetailWidget> {
+
+  final TextEditingController _subtaskController = TextEditingController();
+  final TextEditingController _labelController = TextEditingController();
+
+  @override
+  void dispose() {
+    _subtaskController.dispose();
+    _labelController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Task Details'),
+        title: const Text('Task Details'),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              task.name,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text(
-              task.description,
-              style: TextStyle(fontSize: 16),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Subtasks:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            if (task.subtasks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No subtasks'),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: task.subtasks.length,
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    title: Text(task.subtasks[index]),
-                  );
-                },
-              ),
-            SizedBox(height: 10,),
-            Text(
-              'Labels',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            if (task.labels.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No labels'),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: task.labels.map((l) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Chip(label: Text(l)),
+      body: Consumer<TaskProvider>(
+        builder: (context, provider, child) {
+          final currentTask = provider.item.firstWhere((t) => t.uuid == widget.task.uuid);
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.task.name,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  widget.task.description,
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Subtasks:',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Add Subtask'),
+                              content: TextField(
+                                controller: _subtaskController,
+                                decoration:
+                                    const InputDecoration(labelText: 'Subtask name'),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text('Cancel'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    if (_subtaskController.text.isNotEmpty) {
+                                      provider.addSubtask(
+                                          currentTask, _subtaskController.text);
+                                      _subtaskController.clear();
+                                    }
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text('Add'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                if (widget.task.subtasks.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text('No subtasks'),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: currentTask.subtasks.length,
+                    itemBuilder: (context, index) {
+                      final subtask = currentTask.subtasks[index];
+                      return ListTile(
+                        title: Text(
+                          subtask.title,
+                          style: TextStyle(
+                            decoration: subtask.isDone
+                                ? TextDecoration.lineThrough
+                                : TextDecoration.none,
+                          ),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              onPressed: () {
+                                provider.removeSubtask(currentTask, index);
+                              },
+                              icon: const Icon(Icons.delete),
+                            ),
+                            Checkbox(
+                              value: subtask.isDone,
+                              onChanged: (value) {
+                                provider.toggleSubtask(currentTask, index);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Labels',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () {
+                        showDialog(
+                          context: context, 
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Add Label'),
+                              content: TextField(
+                                controller: _labelController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Label'
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  }, 
+                                  child: const Text('Cancel')
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    if (_labelController.text.isNotEmpty) {
+                                      provider.addLabel(
+                                        currentTask, _labelController.text,
+                                      );
+                                      _labelController.clear();
+                                    }
+                                    Navigator.pop(context);
+                                  }, 
+                                  child: const Text('Add')
+                                )
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    )
+                  ],
+                ),
+                if (widget.task.labels.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text('No labels'),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    children: currentTask.labels.map((l) {
+                      return Chip(
+                        label: Text(l),
+                        deleteIcon: const Icon(Icons.close),
+                        onDeleted: () {
+                          provider.removeLabel(currentTask, l);
+                        },
                       );
                     }).toList(),
                   ),
-                ),
-              ),
-          ],
-        ),
-      ),
+              ],
+            ),
+          );
+        },
+      )
     );
   }
 }
@@ -373,7 +566,7 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
       body: SingleChildScrollView(
         child: Container(
           color: Colors.white,
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               TextField(
@@ -472,7 +665,7 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
                     onPressed: () {
                       final text = taskController.text;
                       final description = descriptionController.text;
-                      final subtasks = _subtaskControllers.map((e) => e.text).toList();
+                      final subtasks = _subtaskControllers.map((e) => Subtask(title: e.text)).toList();
                       final labels = _labelControllers.map((e) => e.text).toList();
                       if (text.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
