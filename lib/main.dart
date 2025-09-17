@@ -59,8 +59,6 @@ class Task {
   
   @override
   int get hashCode => uuid.hashCode;
-
-  String get title => name;
   
 }
 
@@ -90,87 +88,21 @@ class TaskProvider extends ChangeNotifier {
     return out;
   }
 
-  void toggleSubtask(Task task, int index) {
-    final taskIndex = _items.indexOf(task);
+  void updateTask(Task oldTask, String newName, String newDescription,
+      List<Subtask> newSubtasks, List<String> newLabels) {
+    final taskIndex = _items.indexOf(oldTask);
     if (taskIndex != -1) {
-      _items[taskIndex].subtasks[index].isDone = !_items[taskIndex].subtasks[index].isDone;
-      notifyListeners();
-    }
-  }
-
-  void removeSubtask (Task task, int index) {
-    final taskIndex = _items.indexOf(task);
-    if (taskIndex != -1) {
-      _items[taskIndex].subtasks.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  void addSubtask (Task task, String title) {
-    final taskIndex = _items.indexOf(task);
-    if (taskIndex != -1) {
-      _items[taskIndex].subtasks.add(Subtask(title: title));
-      notifyListeners();
-    }
-  }
-
-  void addLabel(Task task, String label) {
-    final taskIndex = _items.indexOf(task);
-    if (taskIndex != -1 && !_items[taskIndex].labels.contains(label)) {
-      final updatedLabels = List<String>.from(_items[taskIndex].labels)..add(label);
       _items[taskIndex] = Task(
-        name: _items[taskIndex].name,
-        description: _items[taskIndex].description,
-        subtasks: _items[taskIndex].subtasks,
-        labels: updatedLabels,
-        uuid: _items[taskIndex].uuid,
+        name: newName,
+        description: newDescription,
+        subtasks: newSubtasks,
+        labels: newLabels,
+        uuid: oldTask.uuid,
       );
       notifyListeners();
     }
   }
 
-  void removeLabel(Task task, String label) {
-    final taskIndex = _items.indexOf(task);
-    if (taskIndex != -1) {
-      final updatedLabels = List<String>.from(_items[taskIndex].labels)..remove(label);
-      _items[taskIndex] = Task(
-        name: _items[taskIndex].name,
-        description: _items[taskIndex].description,
-        subtasks: _items[taskIndex].subtasks,
-        labels: updatedLabels,
-        uuid: _items[taskIndex].uuid
-      );
-      notifyListeners();
-    }
-  }
-
-void updateTaskTitle(Task task, String newName) {
-  final taskIndex = _items.indexOf(task);
-  if (taskIndex != -1) {
-    _items[taskIndex] = Task(
-      name: newName, 
-      description: _items[taskIndex].description, 
-      subtasks: _items[taskIndex].subtasks, 
-      labels: _items[taskIndex].labels,
-      uuid: _items[taskIndex].uuid,
-    );
-    notifyListeners();
-  }
-}
-
-void updateDescription(Task task, String newDescription) {
-  final taskIndex = _items.indexOf(task);
-  if (taskIndex != -1) {
-    _items[taskIndex] = Task(
-      name: _items[taskIndex].name, 
-      description: newDescription, 
-      subtasks: _items[taskIndex].subtasks, 
-      labels: _items[taskIndex].labels,
-      uuid: _items[taskIndex].uuid,
-    );
-    notifyListeners();
-  }
-}
 
 }
 
@@ -336,21 +268,31 @@ class TaskDetailWidget extends StatefulWidget {
 }
 
 class _TaskDetailWidgetState extends State<TaskDetailWidget> {
-
   bool _isEditingName = false;
   bool _isEditingDescription = false;
 
-  late TextEditingController _nameController;
-  late TextEditingController _descriptionController;
+  late String _localName;
+  late String _localDescription;
+  late List<Subtask> _localSubtasks;
+  late List<String> _localLabels;
 
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _subtaskController = TextEditingController();
   final TextEditingController _labelController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.task.name);
-    _descriptionController = TextEditingController(text: widget.task.description);
+    _localName = widget.task.name;
+    _localDescription = widget.task.description;
+    _localSubtasks = widget.task.subtasks
+        .map((s) => Subtask(title: s.title, isDone: s.isDone))
+        .toList();
+    _localLabels = List.from(widget.task.labels);
+
+    _nameController.text = _localName;
+    _descriptionController.text = _localDescription;
   }
 
   @override
@@ -365,238 +307,242 @@ class _TaskDetailWidgetState extends State<TaskDetailWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Task Details'),
-      ),
-      body: Consumer<TaskProvider>(
-        builder: (context, provider, child) {
-          final currentTask = provider.item.firstWhere((t) => t.uuid == widget.task.uuid);
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _isEditingName 
-                    ? TextField(
-                      controller: _nameController,
-                      onEditingComplete: () {
-                        if (_nameController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Task must not be empty'))
-                          );
-                          return ;
-                        }
-                        provider.updateTaskTitle(currentTask, _nameController.text);
-                        setState(() {
-                          _isEditingName = false;
-                        });
-                      },
-                    )
-                    : GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isEditingName = true;
-                        });
-                      },
-                      child: Text(
-                        currentTask.name,
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                const SizedBox(height: 10),
-                _isEditingDescription
-                    ? Column(
-                      children: [
-                        TextField(
-                          controller: _descriptionController,
-                          maxLines: null,
-                        ),
-                        Row(
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                provider.updateDescription(currentTask, _descriptionController.text);
-                                setState(() => _isEditingDescription = false,);
-                              }, 
-                              child: Text('OK')
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                setState(() => _isEditingDescription = false,);
-                              }, 
-                              child: Text('Cancel')
-                            ),
-                          ],
-                        )
-                      ],
-                    )
-                    : GestureDetector(
-                      onTap: () {
-                        setState(() => _isEditingDescription = true,);
-                      },
-                      child: Text(
-                        currentTask.description.isEmpty
-                            ? "This is the description"
-                            : currentTask.description
-                      ),
-                    ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Subtasks:',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('Add Subtask'),
-                              content: TextField(
-                                controller: _subtaskController,
-                                decoration:
-                                    const InputDecoration(labelText: 'Subtask name'),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('Cancel'),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    if (_subtaskController.text.isNotEmpty) {
-                                      provider.addSubtask(
-                                          currentTask, _subtaskController.text);
-                                      _subtaskController.clear();
-                                    }
-                                    Navigator.pop(context);
-                                  },
-                                  child: const Text('Add'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                if (widget.task.subtasks.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No subtasks'),
+      appBar: AppBar(title: const Text("Task Details")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _isEditingName
+                ? TextField(
+                    controller: _nameController,
+                    onSubmitted: (value) {
+                      setState(() {
+                        _localName = value;
+                        _isEditingName = false;
+                      });
+                    },
                   )
-                else
-                  Wrap(
-                    alignment: WrapAlignment.start,
-                    spacing: 8,
-                    children: currentTask.subtasks.map((subtask) {
-                      final index = currentTask.subtasks.indexOf(subtask);
-                      return Chip(
-                        label: GestureDetector(
-                          onTap: () {
-                            provider.toggleSubtask(currentTask, index);
-                          },
-                          child: Text(
-                            subtask.title,
-                            style: TextStyle(
-                              decoration: subtask.isDone
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                            ),
+                : GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isEditingName = true;
+                      });
+                    },
+                    child: Text(
+                      _localName,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+            const SizedBox(height: 10),
+            _isEditingDescription
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _descriptionController,
+                        maxLines: null,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _localDescription = _descriptionController.text;
+                                _isEditingDescription = false;
+                              });
+                            },
+                            child: const Text('OK'),
                           ),
-                        ),
-                        deleteIcon: const Icon(Icons.close),
-                        onDeleted: () {
-                          provider.removeSubtask(currentTask, index);
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Labels',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () {
-                        showDialog(
-                          context: context, 
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('Add Label'),
-                              content: TextField(
-                                controller: _labelController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Label'
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  }, 
-                                  child: const Text('Cancel')
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    if (_labelController.text.isNotEmpty) {
-                                      provider.addLabel(
-                                        currentTask, _labelController.text,
-                                      );
-                                      _labelController.clear();
-                                    }
-                                    Navigator.pop(context);
-                                  }, 
-                                  child: const Text('Add')
-                                )
-                              ],
-                            );
-                          },
-                        );
-                      },
-                    )
-                  ],
-                ),
-                if (widget.task.labels.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('No labels'),
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _descriptionController.text = _localDescription;
+                                _isEditingDescription = false;
+                              });
+                            },
+                            child: const Text('Cancel'),
+                          ),
+                        ],
+                      ),
+                    ],
                   )
-                else
-                  Wrap(
-                    alignment: WrapAlignment.start,
-                    direction: Axis.horizontal,
-                    spacing: 8,
-                    children: currentTask.labels.map((l) {
-                      return Chip(
-                        label: Text(l),
-                        deleteIcon: const Icon(Icons.close),
-                        onDeleted: () {
-                          provider.removeLabel(currentTask, l);
-                        },
-                      );
-                    }).toList(),
+                : GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _isEditingDescription = true;
+                        _descriptionController.text = _localDescription;
+                      });
+                    },
+                    child: Text(
+                      _localDescription.isEmpty ? "No description" : _localDescription,
+                      style: const TextStyle(fontSize: 16),
+                    ),
                   ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Subtasks",
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showAddSubtaskDialog,
+                ),
               ],
             ),
-          );
-        },
-      )
+            Wrap(
+              spacing: 8,
+              children: List.generate(_localSubtasks.length, (i) {
+                final subtask = _localSubtasks[i];
+                return Chip(
+                  label: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _localSubtasks[i].isDone =
+                            !_localSubtasks[i].isDone;
+                      });
+                    },
+                    child: Text(
+                      subtask.title,
+                      style: TextStyle(
+                        decoration: subtask.isDone
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  deleteIcon: const Icon(Icons.close),
+                  onDeleted: () {
+                    setState(() {
+                      _localSubtasks.removeAt(i);
+                    });
+                  },
+                );
+              }),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Labels",
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showAddLabelDialog,
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: List.generate(_localLabels.length, (i) {
+                final label = _localLabels[i];
+                return Chip(
+                  label: Text(label),
+                  deleteIcon: const Icon(Icons.close),
+                  onDeleted: () {
+                    setState(() {
+                      _localLabels.removeAt(i);
+                    });
+                  },
+                );
+              }),
+            ),
+            const SizedBox(height: 30),
+            TextButton(onPressed: _saveChanges, child: Chip(label: Text('Save')))
+          ],
+        ),
+      ),
     );
   }
+
+  void _showAddSubtaskDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add Subtask"),
+        content: TextField(
+          controller: _subtaskController,
+          decoration: const InputDecoration(labelText: "Subtask name"),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Chip(label: const Text("Cancel"))),
+          TextButton(
+            onPressed: () {
+              if (_subtaskController.text.isNotEmpty) {
+                setState(() {
+                  _localSubtasks
+                      .add(Subtask(title: _subtaskController.text));
+                });
+                _subtaskController.clear();
+              }
+              Navigator.pop(context);
+            },
+            child: Chip(label: const Text("Add")),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLabelDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add Label"),
+        content: TextField(
+          controller: _labelController,
+          decoration: const InputDecoration(labelText: "Label"),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Chip(label: const Text("Cancel"))),
+          TextButton(
+            onPressed: () {
+              if (_labelController.text.isNotEmpty) {
+                setState(() {
+                  _localLabels.add(_labelController.text);
+                });
+                _labelController.clear();
+              }
+              Navigator.pop(context);
+            },
+            child: Chip(label: const Text("Add")),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _saveChanges() {
+    if (_localName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Task name cannot be empty")),
+      );
+      return;
+    }
+
+    context.read<TaskProvider>().updateTask(
+          widget.task,
+          _localName,
+          _localDescription,
+          _localSubtasks,
+          _localLabels,
+        );
+
+    Navigator.pop(context);
+  }
 }
+
 
 
 class MyHomePage extends StatefulWidget {
@@ -653,174 +599,193 @@ class AddingTaskWidget extends StatefulWidget {
 }
 
 class _AddingTaskWidgetState extends State<AddingTaskWidget> {
+  String _localName = "";
+  String _localDescription = "";
+  final List<Subtask> _localSubtasks = [];
+  final List<String> _localLabels = [];
 
-  final TextEditingController taskController = TextEditingController();
-  final List<TextEditingController> _subtaskControllers = [];
-  final TextEditingController descriptionController = TextEditingController();
-  final List<TextEditingController> _labelControllers = [];
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _subtaskController = TextEditingController();
+  final TextEditingController _labelController = TextEditingController();
 
   @override
   void dispose() {
-    taskController.dispose();
-    for (var controller in _subtaskControllers) {
-      controller.dispose();
-    }
-    descriptionController.dispose();
-    for (var controller in _labelControllers) {
-      controller.dispose();
-    }
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _subtaskController.dispose();
+    _labelController.dispose();
     super.dispose();
-  }
-
-  void addTasks() {
-    setState(() {
-      _subtaskControllers.add(TextEditingController());
-    });
-  }
-
-  void addLabel() {
-    setState(() {
-      _labelControllers.add(TextEditingController());
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Add New Task'),
-      ),
+      appBar: AppBar(title: const Text("Add Task")),
       body: SingleChildScrollView(
-        child: Container(
-          color: Colors.white,
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              TextField(
-                controller: taskController,
-                decoration: InputDecoration(
-                  labelText: 'Task Name',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  )
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: "Task Name"),
+              onChanged: (value) => _localName = value,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: "Description"),
+              maxLines: null,
+              onChanged: (value) => _localDescription = value,
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Subtasks", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showAddSubtaskDialog,
                 ),
-              ),
-              SizedBox(height: 15,),
-              Column(
-                children: List.generate(
-                  _subtaskControllers.length, 
-                  (index) {
-                    return Padding(
-                      padding: EdgeInsetsGeometry.only(bottom: 10),
-                      child: TextField(
-                        controller: _subtaskControllers[index],
-                        decoration: InputDecoration(
-                          suffixIcon: IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _subtaskControllers.removeAt(index);
-                              });
-                            }, 
-                            icon: Icon(Icons.delete)
-                          ),
-                          labelText: 'Subtask Name',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: List.generate(_localSubtasks.length, (i) {
+                final subtask = _localSubtasks[i];
+                return Chip(
+                  label: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _localSubtasks[i].isDone = !_localSubtasks[i].isDone;
+                      });
+                    },
+                    child: Text(
+                      subtask.title,
+                      style: TextStyle(
+                        decoration: subtask.isDone
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
                       ),
-                    );
-                  }
-                ),
-              ),
-              SizedBox(height: 15,),
-              SizedBox(
-                height: 100,
-                child: TextField(
-                  controller: descriptionController,
-                  maxLines: null,
-                  expands: true,
-                  decoration: InputDecoration(
-                    labelText: 'Description',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    )
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(height: 10,),
-              Column(
-                children: List.generate(
-                  _labelControllers.length, 
-                  (index) {
-                    return TextField(
-                      controller: _labelControllers[index],
-                      decoration: InputDecoration(
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                            _labelControllers.removeAt(index);
-                            });
-                          },
-                          icon: Icon(Icons.delete)
-                        ),
-                        labelText: 'label',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(15)
-                        )
-                      ),
-                    );
+                  deleteIcon: const Icon(Icons.close),
+                  onDeleted: () {
+                    setState(() {
+                      _localSubtasks.removeAt(i);
+                    });
                   },
+                );
+              }),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Labels", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showAddLabelDialog,
                 ),
-              ),
-              SizedBox(height: 10,),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      addTasks();
-                    }, 
-                    child: Chip(label: Text('Add Subtask'))
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      addLabel();
-                    }, 
-                    child: Chip(label: Text('Add label'))
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      final text = taskController.text;
-                      final description = descriptionController.text;
-                      final subtasks = _subtaskControllers.map((e) => Subtask(title: e.text)).toList();
-                      final labels = _labelControllers.map((e) => e.text).toList();
-                      if (text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Enter Task'))
-                        );
-                        return;
-                      }
-                      if (text.isNotEmpty) {
-                        final task = Task(
-                          name: text,
-                          description: description,
-                          subtasks: subtasks,
-                          labels: labels,
-                        );
-                        context.read<TaskProvider>().add(
-                          task,
-                        );
-                      }
-                      Navigator.of(context).pop();
-                    }, 
-                    child: Chip(label: Text('Add'))
-                  )
-                ],
-              ),
-            ],
-          ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: List.generate(_localLabels.length, (i) {
+                final label = _localLabels[i];
+                return Chip(
+                  label: Text(label),
+                  deleteIcon: const Icon(Icons.close),
+                  onDeleted: () {
+                    setState(() {
+                      _localLabels.removeAt(i);
+                    });
+                  },
+                );
+              }),
+            ),
+            const SizedBox(height: 30),
+            TextButton(onPressed: _saveTask, child: Chip(label: Text('Add')))
+          ],
         ),
       ),
     );
+  }
+
+  void _showAddSubtaskDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add Subtask"),
+        content: TextField(
+          controller: _subtaskController,
+          decoration: const InputDecoration(labelText: "Subtask name"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Chip(label: const Text("Cancel"))),
+          TextButton(
+            onPressed: () {
+              if (_subtaskController.text.isNotEmpty) {
+                setState(() {
+                  _localSubtasks.add(Subtask(title: _subtaskController.text));
+                });
+                _subtaskController.clear();
+              }
+              Navigator.pop(context);
+            },
+            child: Chip(label: const Text("Add")),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLabelDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add Label"),
+        content: TextField(
+          controller: _labelController,
+          decoration: const InputDecoration(labelText: "Label"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Chip(label: const Text("Cancel"))),
+          TextButton(
+            onPressed: () {
+              if (_labelController.text.isNotEmpty) {
+                setState(() {
+                  _localLabels.add(_labelController.text);
+                });
+                _labelController.clear();
+              }
+              Navigator.pop(context);
+            },
+            child: Chip(label: const Text("Add")),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _saveTask() {
+    if (_localName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Task name cannot be empty")),
+      );
+      return;
+    }
+
+    context.read<TaskProvider>().add(
+          Task(
+            name: _localName,
+            description: _localDescription,
+            subtasks: _localSubtasks,
+            labels: _localLabels,
+          ),
+        );
+
+    Navigator.pop(context);
   }
 }
