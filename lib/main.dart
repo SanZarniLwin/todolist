@@ -103,7 +103,6 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
-
 }
 
 class TaskWidget extends StatelessWidget {
@@ -478,10 +477,19 @@ class _TaskDetailWidgetState extends State<TaskDetailWidget> {
           TextButton(
             onPressed: () {
               if (_subtaskController.text.isNotEmpty) {
-                setState(() {
+                final newSub = _subtaskController.text.trim();
+                final exists = _localSubtasks.any((s) => s.title == newSub);
+                
+                if (!exists) {
+                  setState(() {
                   _localSubtasks
-                      .add(Subtask(title: _subtaskController.text));
+                      .add(Subtask(title: newSub));
                 });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Subtask already exists")),
+                  );
+                }
                 _subtaskController.clear();
               }
               Navigator.pop(context);
@@ -509,9 +517,17 @@ class _TaskDetailWidgetState extends State<TaskDetailWidget> {
           TextButton(
             onPressed: () {
               if (_labelController.text.isNotEmpty) {
-                setState(() {
-                  _localLabels.add(_labelController.text);
+                final newLabel = _labelController.text.trim();
+                final exists = _localLabels.contains(newLabel);
+                if (!exists) {
+                  setState(() {
+                  _localLabels.add(newLabel);
                 });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Label already exists"))
+                  );
+                }
                 _labelController.clear();
               }
               Navigator.pop(context);
@@ -552,6 +568,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  final Set<String> _selectedLabels = {};
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -563,14 +581,63 @@ class _MyHomePageState extends State<MyHomePage> {
           SizedBox(height: 50,
             child: Consumer<TaskProvider>(
               builder: (context, value, child) {
-                return TagWidget(tasks: value.item);
+                final labels = value.allLabels().toList();
+
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      ...labels.map((label) {
+                        final isSelected = _selectedLabels.contains(label);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Text(label), 
+                            selected: isSelected,
+                            selectedColor: Colors.teal,
+                            onSelected: (selected) {
+                              setState(() {
+                                if (isSelected) {
+                                  _selectedLabels.remove(label);
+                                } else {
+                                  _selectedLabels.add(label);
+                                }
+                              });
+                            },
+                          ),
+                        );
+                      }),
+                      if (_selectedLabels.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ActionChip(
+                            label: const Text('Clear'),
+                            onPressed: () {
+                              setState(() {
+                                _selectedLabels.clear();
+                              });
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                );
               },
             ),
           ),
           Expanded(
             child: Consumer<TaskProvider>(
               builder: (context, value, child) {
-                return TaskWidget(tasks: value.item);
+                final allTasks = value.item;
+                final filteredTasks = _selectedLabels.isEmpty
+                    ? allTasks
+                    : allTasks.where((task) {
+                      return _selectedLabels
+                            .any((label) => task.labels.contains(label));
+                    });
+                return TaskWidget(
+                  tasks: UnmodifiableListView(filteredTasks),
+                );
               },
             ),
           ),
@@ -727,9 +794,17 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
           TextButton(
             onPressed: () {
               if (_subtaskController.text.isNotEmpty) {
-                setState(() {
-                  _localSubtasks.add(Subtask(title: _subtaskController.text));
-                });
+                final newSub = _subtaskController.text.trim();
+                final exists = _localSubtasks.any((s) => s.title == newSub);
+                if (!exists) {
+                  setState(() {
+                    _localSubtasks.add(Subtask(title: newSub));
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Subtask already exists'))
+                  );
+                }
                 _subtaskController.clear();
               }
               Navigator.pop(context);
@@ -742,22 +817,64 @@ class _AddingTaskWidgetState extends State<AddingTaskWidget> {
   }
 
   void _showAddLabelDialog() {
+    final existing = context.read<TaskProvider>().allLabels();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Add Label"),
-        content: TextField(
-          controller: _labelController,
-          decoration: const InputDecoration(labelText: "Label"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _labelController,
+                decoration: const InputDecoration(labelText: "Label"),
+              ),
+              const SizedBox(height: 12),
+              if (existing.isNotEmpty) ...[
+                Wrap(
+                  spacing: 8,
+                  children: existing.map((lab) {
+                    return ActionChip(
+                      label: Text(lab),
+                      onPressed: () {
+                        final selected = lab.trim();
+                        final exists = _localLabels.contains(selected);
+                        if (!exists) {
+                          setState(() {
+                            _localLabels.add(selected);
+                          });
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Label already added")),
+                          );
+                        }
+                        Navigator.pop(context);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Chip(label: const Text("Cancel"))),
           TextButton(
             onPressed: () {
-              if (_labelController.text.isNotEmpty) {
-                setState(() {
-                  _localLabels.add(_labelController.text);
-                });
+              final newLabel = _labelController.text.trim();
+              if (newLabel.isNotEmpty) {
+                final exists = _localLabels.contains(newLabel);
+                if (!exists) {
+                  setState(() {
+                    _localLabels.add(newLabel);
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Label already exists'))
+                  );
+                }
                 _labelController.clear();
               }
               Navigator.pop(context);
