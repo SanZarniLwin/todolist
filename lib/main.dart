@@ -502,13 +502,47 @@ class _TaskDetailWidgetState extends State<TaskDetailWidget> {
   }
 
   void _showAddLabelDialog() {
+    final existing = context.read<TaskProvider>().allLabels();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Add Label"),
-        content: TextField(
-          controller: _labelController,
-          decoration: const InputDecoration(labelText: "Label"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _labelController,
+                decoration: const InputDecoration(labelText: "Label"),
+              ),
+              const SizedBox(height: 12),
+              if (existing.isNotEmpty) ...[
+                Wrap(
+                  spacing: 8,
+                  children: existing.map((lab) {
+                    return ActionChip(
+                      label: Text(lab),
+                      onPressed: () {
+                        final selected = lab.trim();
+                        final exists = _localLabels.contains(selected);
+                        if (!exists) {
+                          setState(() {
+                            _localLabels.add(selected);
+                          });
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Label already added")),
+                          );
+                        }
+                        Navigator.pop(context);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -582,6 +616,10 @@ class _MyHomePageState extends State<MyHomePage> {
             child: Consumer<TaskProvider>(
               builder: (context, value, child) {
                 final labels = value.allLabels().toList();
+                final hasUnlabeled = value.item.any((task) => task.labels.isEmpty);
+                if (hasUnlabeled) {
+                  labels.add("Unknown");
+                }
 
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -632,8 +670,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 final filteredTasks = _selectedLabels.isEmpty
                     ? allTasks
                     : allTasks.where((task) {
+                      final taskLabels = task.labels.isEmpty ? ["Unknown"] : task.labels;
                       return _selectedLabels
-                            .any((label) => task.labels.contains(label));
+                            .every((label) => taskLabels.contains(label));
                     });
                 return TaskWidget(
                   tasks: UnmodifiableListView(filteredTasks),
